@@ -160,5 +160,15 @@ async function start() {
     await initSpotify();
     await initTwitch();
 }
+// Dummy-Server für Render, damit der Port-Scan nicht fehlschlägt
+const http = require('http');
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot läuft!\n');
+});
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`✅ Web-Server läuft auf Port ${PORT}`);
+});
 
 start();
