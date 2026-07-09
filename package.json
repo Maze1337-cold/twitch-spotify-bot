@@ -1,0 +1,21 @@
+{
+  "name": "fynns9211spotibot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.2",
+    "@twurple/api": "^8.1.4",
+    "@twurple/auth": "^8.1.4",
+    "@twurple/chat": "^8.1.4",
+    "dotenv": "^17.4.2",
+    "spotify-web-api-node": "^5.0.2"
+  }
+}

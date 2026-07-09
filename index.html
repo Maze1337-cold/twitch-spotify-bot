@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream Song-Wunsch Dashboard</title>
+    <!-- Tailwind CSS für schnelles, schickes Design -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Supabase CDN einbinden -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { background-color: #0e0e10; color: #efeff1; font-family: sans-serif; }
+        .twitch-purple { color: #9146ff; }
+        .spotify-green { color: #1db954; }
+        .bg-card { background-color: #18181b; }
+    </style>
+</head>
+<body class="p-6 max-w-6xl mx-auto">
+
+    <!-- Header & Gesamtzähler -->
+    <header class="text-center my-8 border-b border-zinc-800 pb-6">
+        <h1 class="text-4xl font-extrabold tracking-tight">🎶 Stream <span class="spotify-green">Songwunsch</span> Dashboard</h1>
+        <p class="text-zinc-400 mt-2">Live-Statistiken der Kanalpunkte-Einlösungen</p>
+        
+        <div class="mt-8 bg-card border border-purple-900/30 rounded-2xl p-6 shadow-xl inline-block max-w-xl w-full">
+            <h3 class="text-zinc-400 font-semibold uppercase tracking-wider text-sm">Kanalpunkte insgesamt ausgegeben</h3>
+            <p id="total-points" class="text-4xl font-black twitch-purple mt-2">0</p>
+            <p id="total-songs" class="text-zinc-500 text-xs mt-1">Lieder insgesamt: 0</p>
+        </div>
+    </header>
+
+    <!-- Tabellen-Raster -->
+    <main class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+        
+        <!-- Sektion 1: User Leaderboard -->
+        <section class="bg-card rounded-2xl p-6 border border-zinc-800 shadow-md">
+            <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">🏆 <span class="twitch-purple">Top User</span> Leaderboard</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-zinc-800 text-zinc-400 text-sm">
+                            <th class="pb-2 w-16">Platz</th>
+                            <th class="pb-2">Username</th>
+                            <th class="pb-2 text-center">Songs</th>
+                            <th class="pb-2 text-right">Punkte</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-body" class="divide-y divide-zinc-800/50">
+                        <!-- Wird via JavaScript befüllt -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Sektion 2: Song Charts -->
+        <section class="bg-card rounded-2xl p-6 border border-zinc-800 shadow-md">
+            <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">🔥 <span class="spotify-green">Song Charts</span> (Meistgewünscht)</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-zinc-800 text-zinc-400 text-sm">
+                            <th class="pb-2 w-12">#</th>
+                            <th class="pb-2">Songname</th>
+                            <th class="pb-2">Interpret</th>
+                            <th class="pb-2 text-right">Anzahl</th>
+                        </tr>
+                    </thead>
+                    <tbody id="charts-body" class="divide-y divide-zinc-800/50">
+                        <!-- Wird via JavaScript befüllt -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // === HIER DEINE KORREKTEN DATEN AUS DER .env EINTRAGEN ===
+        const SUPABASE_URL = "https://mppupyzojrpuiehrlsib.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_5Z70pum7jErVj7vYs8G-dA_CMzOh4U4";
+
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        async function updateDashboard() {
+            // 1. Alle Daten aus Supabase ziehen
+            const { data: requests, error } = await supabase
+                .from('song_requests')
+                .select('*');
+
+            if (error) {
+                console.error("Fehler beim Laden:", error.message);
+                return;
+            }
+
+            const POINTS_PER_SONG = 2000;
+            
+            // --- BERECHNUNG: GESAMTSTATISTIKEN ---
+            const totalSongsCount = requests.length;
+            const totalPointsCalculated = totalSongsCount * POINTS_PER_SONG;
+            
+            document.getElementById('total-points').innerText = totalPointsCalculated.toLocaleString('de-CH') + " Pkt.";
+            document.getElementById('total-songs').innerText = `Lieder insgesamt eingereiht: ${totalSongsCount}`;
+
+            // --- BERECHNUNG: USER LEADERBOARD ---
+            const userMap = {};
+            requests.forEach(req => {
+                userMap[req.username] = (userMap[req.username] || 0) + 1;
+            });
+
+            const sortedUsers = Object.entries(userMap)
+                .map(([username, count]) => ({ username, count, points: count * POINTS_PER_SONG }))
+                .sort((a, b) => b.count - a.count);
+
+            const leaderboardBody = document.getElementById('leaderboard-body');
+            leaderboardBody.innerHTML = '';
+            sortedUsers.slice(0, 15).forEach(([index, user], i) => {
+                let medal = `${i + 1}.`;
+                if (i === 0) medal = "🥇";
+                if (i === 1) medal = "🥈";
+                if (i === 2) medal = "🥉";
+
+                leaderboardBody.innerHTML += `
+                    <tr class="hover:bg-zinc-800/30">
+                        <td class="py-3 font-bold text-zinc-500">${medal}</td>
+                        <td class="py-3 font-medium text-zinc-200">@${sortedUsers[i].username}</td>
+                        <td class="py-3 text-center text-zinc-300">${sortedUsers[i].count}</td>
+                        <td class="py-3 text-right font-semibold twitch-purple">${sortedUsers[i].points.toLocaleString('de-CH')}</td>
+                    </tr>
+                `;
+            });
+
+            // --- BERECHNUNG: SONG CHARTS ---
+            const songMap = {};
+            requests.forEach(req => {
+                const key = `${req.song_title} ——— ${req.artist}`;
+                songMap[key] = (songMap[key] || 0) + 1;
+            });
+
+            const sortedSongs = Object.entries(songMap)
+                .map(([key, count]) => {
+                    const [title, artist] = key.split(' ——— ');
+                    return { title, artist, count };
+                })
+                .sort((a, b) => b.count - a.count);
+
+            const chartsBody = document.getElementById('charts-body');
+            chartsBody.innerHTML = '';
+            sortedSongs.slice(0, 15).forEach((song, i) => {
+                chartsBody.innerHTML += `
+                    <tr class="hover:bg-zinc-800/30">
+                        <td class="py-3 font-bold text-zinc-600">${i + 1}</td>
+                        <td class="py-3 text-zinc-100 font-medium truncate max-w-[180px]">${song.title}</td>
+                        <td class="py-3 text-zinc-400 truncate max-w-[140px]">${song.artist}</td>
+                        <td class="py-3 text-right font-bold spotify-green">${song.count}x</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Dashboard direkt laden und alle 30 Sekunden aktualisieren
+        updateDashboard();
+        setInterval(updateDashboard, 30000);
+    </script>
+</body>
+</html>
