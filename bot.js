@@ -1,32 +1,63 @@
 require('dotenv').config();
 const SpotifyWebApi = require('spotify-web-api-node');
 const { ChatClient } = require('@twurple/chat');
-const { RefreshingAuthProvider } = require('@twurple/auth'); // Aktualisiert auf RefreshingAuthProvider
+const { RefreshingAuthProvider } = require('@twurple/auth');
 const { ApiClient } = require('@twurple/api');
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// === DIE AKTUALISIERTE queueSpotifySong FUNKTION ===
+const spotifyApi = new SpotifyWebApi({
+    clientId: process.env.SPOTIFY_CLIENT_ID,
+    clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+    redirectUri: process.env.SPOTIFY_REDIRECT_URI
+});
+
+// === DIE OPTIMIERTE queueSpotifySong FUNKTION (Inklusive Link-Erkennung) ===
 async function queueSpotifySong(songQuery, chatClient, channel, user) {
     try {
-        const searchResults = await spotifyApi.searchTracks(songQuery, { limit: 1 });
-        const tracks = searchResults.body.tracks.items;
+        let trackUri = '';
+        let songTitle = '';
+        let artistName = '';
 
-        if (tracks.length === 0) {
-            await chatClient.say(channel, `⚠️ @${user}, ich konnte den Song "${songQuery}" leider nicht finden.`);
-            return;
+        // Bereinige die Eingabe von unnötigen Leerzeichen
+        const queryClean = songQuery.trim();
+
+        // Regex, um Spotify-Track-IDs aus Links zu fischen (z.B. https://open.spotify.com/track/4PTG3Z6...)
+        const linkMatch = queryClean.match(/open\.spotify\.com\/track\/([a-zA-Z0-9]+)/);
+
+        if (linkMatch) {
+            // SZENARIO A: User hat einen direkten Link geschickt
+            const trackId = linkMatch[1];
+            console.log(`[Spotify] Direktlink erkannt. Hole Track-Details für ID: ${trackId}`);
+            
+            const trackData = await spotifyApi.getTrack(trackId);
+            const track = trackData.body;
+            
+            trackUri = track.uri;
+            songTitle = track.name;
+            artistName = track.artists[0].name;
+        } else {
+            // SZENARIO B: Normale Textsuche
+            const searchResults = await spotifyApi.searchTracks(queryClean, { limit: 1 });
+            const tracks = searchResults.body.tracks.items;
+
+            if (tracks.length === 0) {
+                await chatClient.say(channel, `⚠️ @${user}, ich konnte den Song "${queryClean}" leider nicht finden.`);
+                return;
+            }
+
+            const track = tracks[0];
+            trackUri = track.uri;
+            songTitle = track.name;
+            artistName = track.artists[0].name;
         }
 
-        const track = tracks[0];
-        const songTitle = track.name;
-        const artistName = track.artists[0].name;
-
         // 1. In Spotify-Queue einreihen
-        await spotifyApi.addToQueue(track.uri);
+        await spotifyApi.addToQueue(trackUri);
         await chatClient.say(channel, `🎶 @${user} hat "${songTitle}" von ${artistName} zur Warteschlange hinzugefügt! 🟢`);
         console.log(`[Spotify] Eingereiht: ${songTitle} - ${artistName}`);
 
-        // 2. NEU: In die Supabase-Datenbank schreiben
+        // 2. In die Supabase-Datenbank schreiben (Für dein Website-Leaderboard!)
         const { error } = await supabase
             .from('song_requests')
             .insert([
@@ -47,12 +78,6 @@ async function queueSpotifySong(songQuery, chatClient, channel, user) {
 
 // === HIER DEN NAMEN DER TWITCH-KANALPUNKTE-BELOHNUNG EINTRAGEN ===
 const REWARD_NAME = "Wunschsong"; 
-
-const spotifyApi = new SpotifyWebApi({
-    clientId: process.env.SPOTIFY_CLIENT_ID,
-    clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-    redirectUri: process.env.SPOTIFY_REDIRECT_URI
-});
 
 async function initSpotify() {
     try {
@@ -76,26 +101,6 @@ async function initSpotify() {
         }, 1000 * 60 * 30);
     } catch (err) {
         console.error('❌ Spotify Fehler beim Start mit Refresh-Token:', err.message);
-    }
-}
-
-async function queueSpotifySong(songQuery, chatClient, channel, user) {
-    try {
-        const searchResults = await spotifyApi.searchTracks(songQuery, { limit: 1 });
-        const tracks = searchResults.body.tracks.items;
-
-        if (tracks.length === 0) {
-            await chatClient.say(channel, `⚠️ @${user}, ich konnte den Song "${songQuery}" leider nicht finden.`);
-            return;
-        }
-
-        const track = tracks[0];
-        await spotifyApi.addToQueue(track.uri);
-        await chatClient.say(channel, `🎶 @${user} hat "${track.name}" von ${track.artists[0].name} zur Warteschlange hinzugefügt! 🟢`);
-        console.log(`[Spotify] Eingereiht: ${track.name} - ${track.artists[0].name}`);
-    } catch (err) {
-        console.error('❌ Fehler beim Hinzufügen zur Queue:', err.message);
-        await chatClient.say(channel, `❌ @${user}, Fehler! Ist Spotify beim Streamer geöffnet und aktiv?`);
     }
 }
 
@@ -160,6 +165,7 @@ async function start() {
     await initSpotify();
     await initTwitch();
 }
+
 // Dummy-Server für Render, damit der Port-Scan nicht fehlschlägt
 const http = require('http');
 const server = http.createServer((req, res) => {
