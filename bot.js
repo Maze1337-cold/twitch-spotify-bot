@@ -12,23 +12,22 @@ const spotifyApi = new SpotifyWebApi({
     redirectUri: process.env.SPOTIFY_REDIRECT_URI
 });
 
-// === DIE OPTIMIERTE queueSpotifySong FUNKTION (Inklusive Link-Erkennung) ===
+// === OPTIMIERTE queueSpotifySong FUNKTION ===
 async function queueSpotifySong(songQuery, chatClient, channel, user) {
     try {
         let trackUri = '';
         let songTitle = '';
         let artistName = '';
 
-        // Bereinige die Eingabe von unnötigen Leerzeichen
         const queryClean = songQuery.trim();
 
-        // Regex, um Spotify-Track-IDs aus Links zu fischen (z.B. https://open.spotify.com/track/4PTG3Z6...)
+        // Regex für Spotify-Track-Links (funktioniert auch mit Mobile-Links wie ?si=...)
         const linkMatch = queryClean.match(/open\.spotify\.com\/track\/([a-zA-Z0-9]+)/);
 
         if (linkMatch) {
-            // SZENARIO A: User hat einen direkten Link geschickt
+            // SZENARIO A: Direktlink
             const trackId = linkMatch[1];
-            console.log(`[Spotify] Direktlink erkannt. Hole Track-Details für ID: ${trackId}`);
+            console.log(`[Spotify] Direktlink erkannt. Hole Details für ID: ${trackId}`);
             
             const trackData = await spotifyApi.getTrack(trackId);
             const track = trackData.body;
@@ -37,8 +36,9 @@ async function queueSpotifySong(songQuery, chatClient, channel, user) {
             songTitle = track.name;
             artistName = track.artists[0].name;
         } else {
-            // SZENARIO B: Normale Textsuche
-            const searchResults = await spotifyApi.searchTracks(queryClean, { limit: 1 });
+            // SZENARIO B: Optimierte Textsuche (ignoriert Groß-/Kleinschreibung)
+            console.log(`[Spotify] Suche nach Text: "${queryClean}"`);
+            const searchResults = await spotifyApi.searchTracks(queryClean.toLowerCase(), { limit: 1 });
             const tracks = searchResults.body.tracks.items;
 
             if (tracks.length === 0) {
@@ -57,7 +57,7 @@ async function queueSpotifySong(songQuery, chatClient, channel, user) {
         await chatClient.say(channel, `🎶 @${user} hat "${songTitle}" von ${artistName} zur Warteschlange hinzugefügt! 🟢`);
         console.log(`[Spotify] Eingereiht: ${songTitle} - ${artistName}`);
 
-        // 2. In die Supabase-Datenbank schreiben (Für dein Website-Leaderboard!)
+        // 2. In die Supabase-Datenbank schreiben (Für das Dashboard!)
         const { error } = await supabase
             .from('song_requests')
             .insert([
@@ -107,13 +107,11 @@ async function initSpotify() {
 async function initTwitch() {
     const channelName = process.env.TWITCH_CHANNEL.toLowerCase();
     
-    // Automatischen Refresh-Provider für Twitch initialisieren
     const authProvider = new RefreshingAuthProvider({
         clientId: process.env.TWITCH_CLIENT_ID,
         clientSecret: process.env.TWITCH_CLIENT_SECRET
     });
 
-    // Token aus der .env-Datei laden
     await authProvider.addUserForToken({
         accessToken: process.env.TWITCH_OAUTH_TOKEN,
         refreshToken: process.env.TWITCH_REFRESH_TOKEN,
@@ -121,7 +119,6 @@ async function initTwitch() {
         obtainmentTimestamp: 0
     }, ['chat']);
 
-    // Loggt im Terminal, wenn Twitch im Hintergrund einen neuen Key generiert hat
     authProvider.onRefresh((userId, newTokenData) => {
         console.log('🔄 Twitch: Access Token wurde automatisch im Hintergrund erneuert!');
     });
@@ -166,7 +163,7 @@ async function start() {
     await initTwitch();
 }
 
-// Dummy-Server für Render, damit der Port-Scan nicht fehlschlägt
+// Dummy-Server für Render
 const http = require('http');
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
